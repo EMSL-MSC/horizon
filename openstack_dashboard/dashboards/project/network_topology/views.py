@@ -175,10 +175,6 @@ class JSONView(View):
                     'id': publicnet.id,
                     'subnets': subnets,
                     'router:external': publicnet['router:external']})
-        data['networks'] = sorted(networks,
-                                  key=lambda x: x.get('router:external'),
-                                  reverse=True)
-
         data['ports'] = [{'id': port.id,
                           'network_id': port.network_id,
                           'device_id': port.device_id,
@@ -196,6 +192,28 @@ class JSONView(View):
             'status': router.status,
             'external_gateway_info': router.external_gateway_info}
             for router in neutron_routers]
+
+        routers_with_gateways = dict([ (i['id'], 1) for i in data['routers'] if i.has_key('external_gateway_info') and i['external_gateway_info'].has_key('network_id') ])
+        network_ids_with_gatewayed_routers = dict([(i['network_id'], 1) for i in data['ports'] if i.get('device_owner') == 'network:router_interface' and i['device_id'] in routers_with_gateways])
+        def mycmp(x, y):
+            xext = x.get('router:external')
+            yext = y.get('router:external')
+            if xext and yext:
+                return cmp(x['name'], y['name'])
+            if xext:
+                return -1
+            if yext:
+                return 1
+            xr = x.get('id') in network_ids_with_gatewayed_routers
+            yr = y.get('id') in network_ids_with_gatewayed_routers
+            if xr and yr:
+                return cmp(x['name'], y['name'])
+            if xr:
+                return -1
+            if yr:
+                return 1
+            return cmp(x['name'], y['name'])
+        data['networks'] = sorted(networks, cmp=mycmp)
 
         # user can't see port on external network. so we are
         # adding fake port based on router information
